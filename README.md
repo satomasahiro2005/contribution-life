@@ -132,15 +132,16 @@ Population of B3/S23 over 100 generations, same seed, edges wrapped:
 ## It tunes itself
 
 `gens` and `seed_level` default to auto. Every threshold is actually simulated
-and cut at the first generation where the board dies out or stops changing; the
-one that runs longest wins. Contribution graphs vary enormously and no fixed
-setting works for all of them:
+and cut once the board empties or its exact state starts repeating; the one that
+runs longest wins. Contribution graphs vary enormously and no fixed setting
+works for all of them:
 
-| | graph | picked | result |
+| | graph | picked | population |
 | --- | --- | --- | --- |
-| a quiet year | 13% full | `L1+`, 25 gens | 13–51 live |
-| a normal year | 27% full | `L1+`, 66 gens | 43–103 live |
-| a busy year | 95% full | `L2+`, 100 gens | 27–119 live |
+| a very quiet year | 6% full | `L1+` | 15–35 |
+| a quiet year | 13% full | `L1+` | 13–51 |
+| a normal year | 27% full | `L1+` | 11–103 |
+| a very busy year | 95% full | `L2+` | 24–121 |
 
 That last row is the one that matters. At 95% density every cell has 7 or 8
 neighbours, none of which are in S23, so an untouched board dies of
@@ -148,14 +149,20 @@ overpopulation on the very first step. Raising the threshold thins it back into
 a range where Life works — and the levels being dropped **fade out on screen
 during the intro**, so nothing is quietly removed behind your back.
 
+Repetition is the only signal used for "nothing new is happening", and
+population deliberately is not. A sparse graph starts near zero, so any measure
+of how full the board is would cut those runs off immediately however much was
+still moving. A glider crossing a torus does not repeat until it has come all
+the way round, so it keeps running.
+
 `edges` defaults to `torus`, which is the right call for two of the three
 layouts. `edges: auto` runs both and keeps the better, and it is worth setting
 on `split`:
 
 | layout | `torus` | `dead` | |
 | --- | --- | --- | --- |
-| `calendar` | **66 gens** | 18 gens | the 53×7 strip needs the wrap |
-| `split` | 33 gens | **100 gens** | the wrap folds the two bands into each other |
+| `calendar` | **100 gens** | 43 gens | the 53×7 strip needs the wrap |
+| `split` | 49 gens | **100 gens** | the wrap folds the two bands into each other |
 | `square` | **100 gens** | 100 gens | either works |
 
 ## Is it really Game of Life?

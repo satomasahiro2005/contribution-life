@@ -378,19 +378,19 @@ def build_loop(seed, cfg: Config):
 
 
 MAX_GENS = 100
-FLOOR = 0.05        # below this share of live cells the board has petered out
-GRACE = 12          # generations to keep running after it has
+GRACE = 12          # generations to keep running once the board starts repeating
 
 
 def _trial(board, cfg: Config, torus: bool):
     """-> (generations worth animating, churn over them)
 
-    The run is over once the board either thins past FLOOR or starts repeating
-    itself. Neither cuts it dead on the spot though: it keeps going for GRACE
-    more generations, so a board that comes down to a couple of blinkers still
-    gets to blink for a while rather than ending the instant nothing new
-    happens. Only an empty board stops immediately, since there is nothing left
-    to look at.
+    The run ends when the board empties, or GRACE generations after the exact
+    state first repeats. Repetition is the only "nothing new is happening"
+    signal used, deliberately: population is not, because a sparse graph starts
+    near zero and any measure of it would cut those boards off immediately no
+    matter how much was still moving. A glider crossing a torus does not repeat
+    until it has come all the way round, so it keeps running - which is the
+    point.
     """
     total = len(board) * len(board[0])
     live = lambda g: sum(1 for r in g for v in r if v)
@@ -401,19 +401,18 @@ def _trial(board, cfg: Config, torus: bool):
 
     seen = {tuple(map(tuple, prev)): 0}
     good = changes = 0
-    over = 0 if live(prev) < total * FLOOR else None
+    over = None
     for g in range(1, MAX_GENS + 1):
         sim.step()
         cur = sim.snapshot()[0]
-        pop = live(cur)
-        if not pop:
+        if not live(cur):
             break
         changes += sum(1 for y in range(len(cur)) for x in range(len(cur[0]))
                        if cur[y][x] != prev[y][x])
         prev = cur
         good = g
         key = tuple(map(tuple, cur))
-        if over is None and (key in seen or pop < total * FLOOR):
+        if over is None and key in seen:
             over = g
         seen[key] = g
         if over is not None and g >= over + GRACE:
