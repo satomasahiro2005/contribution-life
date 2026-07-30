@@ -256,6 +256,13 @@ out.
 
 A typical loop is 70 frames and 120 KB, which is about 11 KB over the wire.
 
+## Versions
+
+`v1` is a moving alias for the newest 1.x, and is what the examples above use.
+Pin an exact release like `@v1.1.0` if you would rather freeze the behaviour —
+`gens` and `seed_level` are fitted by simulation, so a change to how a run is
+cut short can change what your graph looks like.
+
 ## Notes
 
 - The default `GITHUB_TOKEN` only sees public contributions. For a graph that
