@@ -42,6 +42,20 @@ jobs:
       - uses: satomasahiro2005/contribution-life@v1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
+
+          # everything below is optional; the value shown is the default
+          # login:      octocat   # whose graph to render; defaults to the repo owner
+          # layout:     calendar  # calendar 53x7 | split 27x7 twice | square 19x19
+          # rule:       B3/S23    # any Life-like B../S.. ; B34/S34 is busier, B36/S23 calmer
+          # gens:       0         # generations per loop; 0 fits it to how long the board lasts
+          # seed_level: 0         # lowest contribution level that counts as alive, 1-4; 0 = auto
+          # color:      hybrid    # hybrid | density | age | gene
+          # hold:       5         # frames your real graph is held before Life starts
+          # fade:       2         # frames the levels below seed_level fade out over
+          # frame_ms:   150       # milliseconds per frame
+          # edges:      torus     # torus | dead | auto (auto tries both, keeps the better)
+          # out_dir:    dist      # directory the SVGs are written to
+          # name:       contribution-life   # produces NAME.svg and NAME-dark.svg
       - run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
