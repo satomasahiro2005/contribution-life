@@ -1,0 +1,131 @@
+name: contribution-life
+description: Render a GitHub contribution graph as an animated Conway's Game of Life SVG
+author: nemut.ai
+
+branding:
+  icon: grid
+  color: green
+
+inputs:
+  github_token:
+    description: >-
+      Token used to read the contribution calendar. The default GITHUB_TOKEN
+      works but only sees public contributions; a PAT with read:user matches
+      what your profile shows.
+    required: true
+  login:
+    description: GitHub username to render. Defaults to the repository owner.
+    required: false
+    default: ""
+  layout:
+    description: Board shape - calendar (53x7), split (27x7 twice) or square (19x19)
+    required: false
+    default: calendar
+  rule:
+    description: Life-like rule string, e.g. B3/S23 for Conway or B34/S34 for a busier board
+    required: false
+    default: B3/S23
+  gens:
+    description: Generations of Life per loop. 0 fits it to how long the board survives.
+    required: false
+    default: "0"
+  seed_level:
+    description: >-
+      Minimum contribution level counted as a live cell, 1-4. 0 picks whichever
+      threshold runs longest, which is what saves very full graphs.
+    required: false
+    default: "0"
+  color:
+    description: How dark a live cell is - hybrid, density, age or gene
+    required: false
+    default: hybrid
+  hold:
+    description: Frames the real graph is held before Life starts
+    required: false
+    default: "5"
+  fade:
+    description: Frames the dropped contribution levels fade out over
+    required: false
+    default: "2"
+  frame_ms:
+    description: Milliseconds per frame
+    required: false
+    default: "150"
+  edges:
+    description: >-
+      torus, dead or auto. Which one survives longer depends on the layout, and
+      auto simulates both and keeps the better.
+    required: false
+    default: torus
+  out_dir:
+    description: Directory the SVGs are written to
+    required: false
+    default: dist
+  name:
+    description: Base filename; produces NAME.svg and NAME-dark.svg
+    required: false
+    default: contribution-life
+
+outputs:
+  light:
+    description: Path to the light-theme SVG
+    value: ${{ steps.render.outputs.light }}
+  dark:
+    description: Path to the dark-theme SVG
+    value: ${{ steps.render.outputs.dark }}
+
+runs:
+  using: composite
+  steps:
+    - id: render
+      shell: bash
+      # every input goes through the environment rather than being expanded
+      # into the script, so nothing here can be turned into shell
+      env:
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+        LOGIN: ${{ inputs.login || github.repository_owner }}
+        ACTION_PATH: ${{ github.action_path }}
+        IN_LAYOUT: ${{ inputs.layout }}
+        IN_RULE: ${{ inputs.rule }}
+        IN_GENS: ${{ inputs.gens }}
+        IN_SEED_LEVEL: ${{ inputs.seed_level }}
+        IN_COLOR: ${{ inputs.color }}
+        IN_HOLD: ${{ inputs.hold }}
+        IN_FADE: ${{ inputs.fade }}
+        IN_FRAME_MS: ${{ inputs.frame_ms }}
+        IN_EDGES: ${{ inputs.edges }}
+        IN_OUT_DIR: ${{ inputs.out_dir }}
+        IN_NAME: ${{ inputs.name }}
+      run: |
+        set -euo pipefail
+        cd "$ACTION_PATH"
+
+        case "$IN_OUT_DIR" in
+          /*|*..*) echo "out_dir must be a relative path inside the workspace" >&2
+                   exit 1 ;;
+        esac
+        case "$IN_NAME" in
+          */*|*..*|"") echo "name must be a plain filename" >&2; exit 1 ;;
+        esac
+
+        python3 glife.py fetch --login "$LOGIN" --out "$RUNNER_TEMP/contrib.json"
+
+        args=(
+          --data       "$RUNNER_TEMP/contrib.json"
+          --layout     "$IN_LAYOUT"
+          --rule       "$IN_RULE"
+          --gens       "$IN_GENS"
+          --seed-level "$IN_SEED_LEVEL"
+          --color      "$IN_COLOR"
+          --hold       "$IN_HOLD"
+          --fade       "$IN_FADE"
+          --frame-ms   "$IN_FRAME_MS"
+          --edges      "$IN_EDGES"
+        )
+
+        python3 glife.py render "${args[@]}" \
+          --out "$GITHUB_WORKSPACE/$IN_OUT_DIR" --name "$IN_NAME"
+        python3 glife.py stats "${args[@]}"
+
+        echo "light=$IN_OUT_DIR/$IN_NAME.svg"      >> "$GITHUB_OUTPUT"
+        echo "dark=$IN_OUT_DIR/$IN_NAME-dark.svg"  >> "$GITHUB_OUTPUT"

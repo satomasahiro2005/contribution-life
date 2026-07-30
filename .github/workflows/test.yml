@@ -1,0 +1,55 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  conformance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Game of Life conformance
+        run: python test_rules.py
+
+      - name: Render every layout from a synthetic graph
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, random
+          from datetime import date, timedelta
+          random.seed(7)
+          start = date(2025, 7, 27)
+          lv = ["NONE", "FIRST_QUARTILE", "SECOND_QUARTILE",
+                "THIRD_QUARTILE", "FOURTH_QUARTILE"]
+          weeks = []
+          for w in range(53):
+              first = start + timedelta(weeks=w)
+              weeks.append({"firstDay": first.isoformat(), "contributionDays": [
+                  {"date": (first + timedelta(days=d)).isoformat(),
+                   "contributionCount": 0, "weekday": d,
+                   "contributionLevel": random.choice(lv)} for d in range(7)]})
+          json.dump({"data": {"user": {"contributionsCollection": {
+              "contributionCalendar": {"totalContributions": 999, "weeks": weeks}}}}},
+              open("contrib.json", "w"))
+          PY
+          for layout in calendar split square; do
+            python glife.py render --layout "$layout" --out dist --name "$layout"
+            python glife.py stats  --layout "$layout"
+          done
+
+      - name: Every SVG is well-formed
+        run: |
+          python - <<'PY'
+          import glob, xml.dom.minidom
+          files = sorted(glob.glob("dist/*.svg"))
+          assert len(files) == 6, files
+          for f in files:
+              xml.dom.minidom.parse(f)
+          print(f"{len(files)} SVGs parse as well-formed XML")
+          PY

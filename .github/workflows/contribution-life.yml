@@ -1,0 +1,46 @@
+name: contribution-life
+
+on:
+  schedule:
+    - cron: "17 3 * * *"   # daily, 03:17 UTC
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: contribution-life
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Render
+        uses: ./
+        with:
+          # a PAT with read:user renders private contributions too
+          github_token: ${{ secrets.CONTRIBUTION_LIFE_TOKEN || secrets.GITHUB_TOKEN }}
+          out_dir: dist
+          name: contribution-life
+
+      - name: Publish to the output branch
+        run: |
+          set -euo pipefail
+          staging=$(mktemp -d)
+          cp dist/*.svg "$staging/"
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git checkout --orphan output
+          git rm -rf . >/dev/null 2>&1 || true
+          cp "$staging"/*.svg .
+
+          git add ./*.svg
+          git commit -m "contribution-life $(date -u +%Y-%m-%d)"
+          git push -f origin output
