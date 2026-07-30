@@ -115,7 +115,7 @@ class Layout:
 
 
 def build_layout(seed, starts, mode="calendar") -> Layout:
-    rows, cols = len(seed), len(seed[0])
+    cols = len(seed[0])
 
     def month_marks(xs, row, side):
         """first column of each month along a strip of week indices"""

@@ -39,6 +39,9 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      # required: the publish step below needs to be inside a git checkout
+      - uses: actions/checkout@v7
+
       - uses: satomasahiro2005/contribution-life@v1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -56,15 +59,23 @@ jobs:
           # edges:      torus     # torus | dead | auto (auto tries both, keeps the better)
           # out_dir:    dist      # directory the SVGs are written to
           # name:       contribution-life   # produces NAME.svg and NAME-dark.svg
-      - run: |
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+      - name: Publish the SVGs to an orphan branch
+        run: |
+          set -euo pipefail
+          staging=$(mktemp -d) && cp dist/*.svg "$staging/"
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout --orphan output
           git rm -rf . >/dev/null 2>&1 || true
-          mv dist/*.svg .
-          git add ./*.svg && git commit -m "contribution-life $(date -u +%F)"
+          cp "$staging"/*.svg .
+          git add ./*.svg
+          git commit -m "contribution-life $(date -u +%F)"
           git push -f origin output
 ```
+
+The `actions/checkout` step is what people miss: the action itself does not need
+it, but `git push` at the end has nothing to push from without it, and the job
+fails with `fatal: not in a git directory`.
 
 Run it once, then put this in your README:
 
@@ -190,10 +201,10 @@ worse than they look. Share of each level actually used:
 
 | `color` | L1 | L2 | L3 | L4 | |
 | --- | --- | --- | --- | --- | --- |
-| `age` — generations survived | 52% | 21% | 10% | 15% | washed out; most live cells are newborns |
-| `gene` — majority vote of the three parents | 87% | 2% | 1% | 8% | collapses, because 75% of a real graph is level 1 |
-| `density` — live cells in the surrounding 5×5 | 34% | 24% | 20% | 20% | bright cores, dark fringes |
-| **`hybrid`** — all three | **28%** | **31%** | **16%** | **23%** | **default** |
+| `age` — generations survived | 41% | 22% | 17% | 18% | washed out; most live cells are newborns |
+| `gene` — majority vote of the three parents | 84% | 0% | 0% | 14% | collapses, because 75% of a real graph is level 1 |
+| `density` — live cells in the surrounding 5×5 | 31% | 21% | 31% | 16% | bright cores, dark fringes |
+| **`hybrid`** — all three | **26%** | **30%** | **21%** | **21%** | **default** |
 
 Whichever metric you pick, its raw values are gathered across every frame and
 split at their own quartiles, so all four levels stay in use no matter the rule.
@@ -254,7 +265,8 @@ next so generations stay discrete. The intro fade is the one exception — those
 keyframes switch to `linear` so the dropped cells dissolve instead of blinking
 out.
 
-A typical loop is 70 frames and 120 KB, which is about 11 KB over the wire.
+A typical loop is around 100 frames and 125 KB, which is about 11 KB over the
+wire once camo has gzipped it.
 
 ## Versions
 
