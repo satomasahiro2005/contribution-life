@@ -70,7 +70,7 @@ Seven rows is very thin for Life. `layout` reshapes the same year of data, and i
 changes how long the colony survives more than anything else does.
 
 <table>
-<tr><td width="50%" valign="top">
+<tr><td colspan="2">
 
 **`calendar`** &nbsp; 53×7 &nbsp;·&nbsp; the familiar one
 
@@ -79,7 +79,8 @@ changes how long the colony survives more than anything else does.
   <img alt="calendar layout" src="docs/demo-calendar.svg">
 </picture>
 
-</td><td width="50%" valign="top">
+</td></tr>
+<tr><td valign="top">
 
 **`split`** &nbsp; 27×7 twice &nbsp;·&nbsp; half the year per band
 
@@ -88,8 +89,7 @@ changes how long the colony survives more than anything else does.
   <img alt="split layout" src="docs/demo-split.svg">
 </picture>
 
-</td></tr>
-<tr><td colspan="2" align="center">
+</td><td valign="top">
 
 **`square`** &nbsp; 19×19 = 361 &nbsp;·&nbsp; the last 361 days packed row-major
 
