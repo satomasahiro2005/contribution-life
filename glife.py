@@ -109,12 +109,16 @@ class Layout:
     """the board Life runs on, plus how to label it"""
     grid: list
     band: int                                   # rows per band
+    mask: list = field(default_factory=list)    # which squares are real days
     months: list = field(default_factory=list)  # (col, row, text, side)
     weekdays: bool = True
     pad_l: int = 30
 
+    def real(self, y, x) -> bool:
+        return not self.mask or self.mask[y][x]
 
-def build_layout(seed, starts, mode="calendar") -> Layout:
+
+def build_layout(seed, mask, starts, mode="calendar") -> Layout:
     cols = len(seed[0])
 
     def month_marks(xs, row, side):
@@ -129,30 +133,36 @@ def build_layout(seed, starts, mode="calendar") -> Layout:
 
     if mode == "calendar":
         return Layout(grid=[row[:] for row in seed], band=ROWS,
+                      mask=[row[:] for row in mask],
                       months=month_marks(range(cols), 0, "above"))
 
     if mode == "split":
         half = (cols + 1) // 2
         grid = [[0] * half for _ in range(ROWS * 2)]
+        msk = [[False] * half for _ in range(ROWS * 2)]
         for x in range(cols):
             bx, band = (x, 0) if x < half else (x - half, 1)
             for y in range(ROWS):
                 grid[band * ROWS + y][bx] = seed[y][x]
+                msk[band * ROWS + y][bx] = mask[y][x]
         # the bands are flush, so the lower one is labelled underneath
-        return Layout(grid=grid, band=ROWS,
+        return Layout(grid=grid, band=ROWS, mask=msk,
                       months=month_marks(range(half), 0, "above")
                       + month_marks(range(half, cols), ROWS * 2 - 1, "below"))
 
     # square: the most recent 361 days packed row-major. There is no calendar
     # structure left, so each month is named beside the row its 1st falls in.
-    days = [(seed[y][x], starts[x] + timedelta(days=y))
+    days = [(seed[y][x], mask[y][x], starts[x] + timedelta(days=y))
             for x in range(cols) for y in range(ROWS)]
     days = days[-SQUARE * SQUARE:]
-    grid = [[v for v, _ in days[i * SQUARE:(i + 1) * SQUARE]]
+    grid = [[v for v, _, _ in days[i * SQUARE:(i + 1) * SQUARE]]
             for i in range(SQUARE)]
+    msk = [[m for _, m, _ in days[i * SQUARE:(i + 1) * SQUARE]]
+           for i in range(SQUARE)]
     months = [(0, i // SQUARE, MONTHS[d.month - 1], "left")
-              for i, (_, d) in enumerate(days) if d.day == 1]
-    return Layout(grid=grid, band=SQUARE, weekdays=False, months=months)
+              for i, (_, _, d) in enumerate(days) if d.day == 1]
+    return Layout(grid=grid, band=SQUARE, mask=msk, weekdays=False,
+                  months=months)
 
 
 # --------------------------------------------------------------------------
@@ -195,19 +205,26 @@ def fetch_calendar(login: str, token: str) -> dict:
 
 
 def load_seed(payload: dict):
-    """-> (level grid [7][cols], week start dates, total contributions)"""
+    """-> (level grid [7][cols], real-day mask, week start dates, total)
+
+    The calendar is a rectangle but the year is not: the slots before the first
+    day and after today have no date behind them. GitHub leaves those blank, and
+    so does this - the mask marks which squares are real days.
+    """
     user = payload.get("data", {}).get("user")
     if not user:
         raise GraphQLError("no such user")
     cal = user["contributionsCollection"]["contributionCalendar"]
     weeks = cal["weeks"]
     grid = [[0] * len(weeks) for _ in range(ROWS)]
+    mask = [[False] * len(weeks) for _ in range(ROWS)]
     starts = []
     for x, w in enumerate(weeks):
         starts.append(date.fromisoformat(w["firstDay"]))
         for d in w["contributionDays"]:
             grid[d["weekday"]][x] = LEVELS[d["contributionLevel"]]
-    return grid, starts, cal["totalContributions"]
+            mask[d["weekday"]][x] = True
+    return grid, mask, starts, cal["totalContributions"]
 
 
 # --------------------------------------------------------------------------
@@ -218,13 +235,26 @@ class Sim:
     """Life-like automaton that also tracks, per cell, how long it has been
     alive (`age`) and the contribution level it descends from (`gene`)."""
 
-    def __init__(self, seed, cfg: Config):
+    def __init__(self, seed, cfg: Config, mask=None):
         self.cfg = cfg
         self.rows = len(seed)
         self.cols = len(seed[0])
+        # squares with no date behind them are outside the board: never alive,
+        # never drawn. Without this, Life would colonise days that have not
+        # happened yet and today's edge would be impossible to see.
+        self.mask = mask
         self.alive = [[v > 0 for v in row] for row in seed]
         self.gene = [[max(1, v) for v in row] for row in seed]
         self.age = [[0] * self.cols for _ in range(self.rows)]
+        self._apply_mask(self.alive)
+
+    def _apply_mask(self, grid):
+        if not self.mask:
+            return
+        for y in range(self.rows):
+            for x in range(self.cols):
+                if not self.mask[y][x]:
+                    grid[y][x] = False
 
     def _wrap(self, x, y):
         if self.cfg.torus:
@@ -281,6 +311,7 @@ class Sim:
                     na[y][x] = True
                     ng[y][x] = self._inherit(genes)
 
+        self._apply_mask(na)
         self.alive, self.gene, self.age = na, ng, nage
 
     def snapshot(self):
@@ -304,9 +335,9 @@ class Sim:
         return [r[:] for r in self.alive], raw
 
 
-def simulate(seed, cfg: Config):
+def simulate(seed, cfg: Config, mask=None):
     """life phase only -> (alive frames, raw metric frames)"""
-    sim = Sim(seed, cfg)
+    sim = Sim(seed, cfg, mask)
     alive_f, raw_f = [], []
     for i in range(cfg.gens + 1):
         if i:
@@ -360,7 +391,7 @@ def colorize(alive_f, raw_f, life_seed, cfg: Config):
     return frames, bins
 
 
-def build_loop(seed, cfg: Config):
+def build_loop(seed, cfg: Config, mask=None):
     """-> (all frames of one loop, quartile bins)
 
     intro: the real graph held, then every level below the threshold fades out
@@ -370,7 +401,7 @@ def build_loop(seed, cfg: Config):
     life:  generation 0 (what is left of the graph) onward
     """
     life_seed = thin(seed, cfg.seed_level)
-    frames, bins = colorize(*simulate(life_seed, cfg), life_seed, cfg)
+    frames, bins = colorize(*simulate(life_seed, cfg, mask), life_seed, cfg)
 
     held = cfg.hold + (cfg.fade if cfg.seed_level > 1 else 0)
     intro = [[row[:] for row in seed] for _ in range(held)]
@@ -381,7 +412,7 @@ MAX_GENS = 100
 GRACE = 12          # generations to keep running once the board starts repeating
 
 
-def _trial(board, cfg: Config, torus: bool):
+def _trial(board, cfg: Config, torus: bool, mask=None):
     """-> (generations worth animating, churn over them)
 
     The run ends when the board empties, or GRACE generations after the exact
@@ -394,7 +425,7 @@ def _trial(board, cfg: Config, torus: bool):
     """
     total = len(board) * len(board[0])
     live = lambda g: sum(1 for r in g for v in r if v)
-    sim = Sim(board, replace(cfg, torus=torus))
+    sim = Sim(board, replace(cfg, torus=torus), mask)
     prev = sim.snapshot()[0]
     if not live(prev):
         return 0, 0.0
@@ -420,7 +451,7 @@ def _trial(board, cfg: Config, torus: bool):
     return good, (changes / (good * total) if good else 0.0)
 
 
-def autotune(seed, cfg: Config):
+def autotune(seed, cfg: Config, mask=None):
     """-> (seed level, generations, torus) that keep the board alive the longest
 
     Every combination is actually simulated. Longest run wins; ties go to the
@@ -433,7 +464,7 @@ def autotune(seed, cfg: Config):
     best = None
     for torus in edges:
         for level in levels:
-            good, churn = _trial(thin(seed, level), cfg, torus)
+            good, churn = _trial(thin(seed, level), cfg, torus, mask)
             if good and churn > 0 and (best is None or (good, churn) > best[0]):
                 best = ((good, churn), level, good, torus)
     if best is None:                    # nothing survives; show the graph anyway
@@ -441,11 +472,11 @@ def autotune(seed, cfg: Config):
     return best[1], best[2], best[3]
 
 
-def resolve(seed, cfg: Config) -> Config:
+def resolve(seed, cfg: Config, mask=None) -> Config:
     """fill in whichever of gens / seed_level / torus were left on auto"""
     if cfg.gens and cfg.seed_level and cfg.torus is not None:
         return cfg
-    level, gens, torus = autotune(seed, cfg)
+    level, gens, torus = autotune(seed, cfg, mask)
     cfg.seed_level = cfg.seed_level or level
     cfg.gens = cfg.gens or gens
     cfg.torus = torus if cfg.torus is None else cfg.torus
@@ -496,6 +527,8 @@ def render_svg(frames, layout: Layout, cfg: Config, theme: str, ns="k") -> str:
     statics, animated = [], []
     for y in range(rows):
         for x in range(cols):
+            if not layout.real(y, x):        # a day that has not happened
+                continue
             tl = tuple(frames[i][y][x] for i in range(nf))
             if len(set(tl)) == 1:
                 statics.append((x, y, tl[0]))
@@ -627,10 +660,10 @@ def make_config(rule="B3/S23", **kw) -> Config:
 
 def build_frames(payload, cfg: Config):
     """-> (frames, quartile bins, layout, total contributions)"""
-    seed, starts, total = load_seed(payload)
-    layout = build_layout(seed, starts, cfg.layout)
-    resolve(layout.grid, cfg)
-    frames, bins = build_loop(layout.grid, cfg)
+    seed, mask, starts, total = load_seed(payload)
+    layout = build_layout(seed, mask, starts, cfg.layout)
+    resolve(layout.grid, cfg, layout.mask)
+    frames, bins = build_loop(layout.grid, cfg, layout.mask)
     return frames, bins, layout, total
 
 
@@ -683,7 +716,7 @@ def main(argv=None):
             raise SystemExit(f"GraphQL: {e}")
         with open(a.out, "w", encoding="utf-8") as fh:
             json.dump(payload, fh)
-        seed, _, total = load_seed(payload)
+        seed, _, _, total = load_seed(payload)
         n, t = sum(1 for r in seed for v in r if v), 7 * len(seed[0])
         print(f"{a.out}: {total} contributions, seed density {n}/{t} = {n*100//t}%")
         return

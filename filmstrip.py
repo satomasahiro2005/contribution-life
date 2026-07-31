@@ -14,9 +14,9 @@ LAYOUT = sys.argv[4] if len(sys.argv) > 4 else "calendar"
 
 CHARS = ".-+*#"   # level 0..4, dark to bright
 
-seed, starts, _ = load_seed(json.load(open("contrib.json", encoding="utf-8")))
+seed, mask, starts, _ = load_seed(json.load(open("contrib.json", encoding="utf-8")))
 cfg = make_config(RULE, gens=GENS, color=COLOR, layout=LAYOUT)
-frames, bins = build_loop(build_layout(seed, starts, LAYOUT).grid, cfg)
+frames, bins = build_loop(build_layout(seed, mask, starts, LAYOUT).grid, cfg)
 first_life = len(frames) - (GENS + 1)
 
 print(f"{RULE}  color={COLOR}  layout={LAYOUT}  {len(frames)} frames  bins={bins}")

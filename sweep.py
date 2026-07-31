@@ -13,11 +13,11 @@ GENS = int(sys.argv[1]) if len(sys.argv) > 1 else 120
 RULES = ["B3/S23", "B36/S23", "B34/S34", "B36/S125", "B368/S238",
          "B35/S236", "B3/S1234", "B378/S235678"]
 
-seed, starts, _ = load_seed(json.load(open("contrib.json", encoding="utf-8")))
+seed, mask, starts, _ = load_seed(json.load(open("contrib.json", encoding="utf-8")))
 print(f"{GENS} generations\n")
 
 for mode in LAYOUTS:
-    grid = build_layout(seed, starts, mode).grid
+    grid = build_layout(seed, mask, starts, mode).grid
     total = len(grid) * len(grid[0])
     print(f"--- {mode}  {len(grid[0])}x{len(grid)}  "
           f"seed {sum(1 for r in grid for v in r if v) * 100 // total}% ---")
