@@ -8,7 +8,6 @@ Pure SVG and CSS keyframes — no JavaScript, no GIF, no runtime.
 Drop one workflow in and it regenerates every day.
 
 [![test](https://github.com/satomasahiro2005/contribution-life/actions/workflows/test.yml/badge.svg)](https://github.com/satomasahiro2005/contribution-life/actions/workflows/test.yml)
-[![daily render](https://github.com/satomasahiro2005/contribution-life/actions/workflows/contribution-life.yml/badge.svg)](https://github.com/satomasahiro2005/contribution-life/actions/workflows/contribution-life.yml)
 [![marketplace](https://img.shields.io/badge/marketplace-contribution--life-2ea043?logo=github&logoColor=white)](https://github.com/marketplace/actions/contribution-life)
 [![license](https://img.shields.io/github/license/satomasahiro2005/contribution-life?color=2ea043)](LICENSE)
 ![dependencies: none](https://img.shields.io/badge/dependencies-none-2ea043)

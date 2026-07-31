@@ -53,3 +53,27 @@ jobs:
               xml.dom.minidom.parse(f)
           print(f"{len(files)} SVGs parse as well-formed XML")
           PY
+
+  action:
+    name: the composite action itself
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # exercises action.yml end to end on a real graph, without publishing
+      # anything: this repo is the tool, not a host for someone's output
+      - uses: ./
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          login: satomasahiro2005
+          out_dir: dist
+          name: probe
+
+      - run: |
+          set -euo pipefail
+          test -s dist/probe.svg && test -s dist/probe-dark.svg
+          python -c "
+          import xml.dom.minidom
+          for f in ('dist/probe.svg','dist/probe-dark.svg'):
+              xml.dom.minidom.parse(f)
+          print('action.yml produced two well-formed SVGs')"
