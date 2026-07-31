@@ -276,6 +276,12 @@ cut short can change what your graph looks like.
 
 ## Notes
 
+- **A scheduled workflow stops after 60 quiet days.** GitHub disables `schedule`
+  on a public repository when nothing has happened there for 60 days, and the
+  daily commit this workflow makes does not count as something happening. You
+  get an email before it goes, and one button in the Actions tab brings it back;
+  running it by hand from time to time also resets the clock. Nothing breaks
+  when it stops — the graph just stays on the last day it rendered.
 - The default `GITHUB_TOKEN` only sees public contributions. For a graph that
   matches your profile, use a PAT with `read:user`.
 - camo caches images; a push to the repository clears it.
