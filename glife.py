@@ -44,6 +44,8 @@ MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
 
 COLOR_MODES = ("hybrid", "density", "age", "gene")
 
+BLANK = -1        # a square with no date behind it: painted with nothing
+
 
 def _bars() -> str:
     """block characters, or ASCII where the console cannot encode them"""
@@ -150,11 +152,15 @@ def build_layout(seed, mask, starts, mode="calendar") -> Layout:
                       months=month_marks(range(half), 0, "above")
                       + month_marks(range(half, cols), ROWS * 2 - 1, "below"))
 
-    # square: the most recent 361 days packed row-major. There is no calendar
-    # structure left, so each month is named beside the row its 1st falls in.
-    days = [(seed[y][x], mask[y][x], starts[x] + timedelta(days=y))
-            for x in range(cols) for y in range(ROWS)]
+    # square: the most recent 361 days packed row-major. Only real days are
+    # taken, so today always lands in the bottom-right corner and the square is
+    # always exactly full. There is no calendar structure left, so each month is
+    # named beside the row its 1st falls in.
+    days = [(seed[y][x], True, starts[x] + timedelta(days=y))
+            for x in range(cols) for y in range(ROWS) if mask[y][x]]
     days = days[-SQUARE * SQUARE:]
+    while len(days) < SQUARE * SQUARE:          # an account younger than a year
+        days.insert(0, (0, False, days[0][2] - timedelta(days=1)))
     grid = [[v for v, _, _ in days[i * SQUARE:(i + 1) * SQUARE]]
             for i in range(SQUARE)]
     msk = [[m for _, m, _ in days[i * SQUARE:(i + 1) * SQUARE]]
@@ -235,26 +241,13 @@ class Sim:
     """Life-like automaton that also tracks, per cell, how long it has been
     alive (`age`) and the contribution level it descends from (`gene`)."""
 
-    def __init__(self, seed, cfg: Config, mask=None):
+    def __init__(self, seed, cfg: Config):
         self.cfg = cfg
         self.rows = len(seed)
         self.cols = len(seed[0])
-        # squares with no date behind them are outside the board: never alive,
-        # never drawn. Without this, Life would colonise days that have not
-        # happened yet and today's edge would be impossible to see.
-        self.mask = mask
         self.alive = [[v > 0 for v in row] for row in seed]
         self.gene = [[max(1, v) for v in row] for row in seed]
         self.age = [[0] * self.cols for _ in range(self.rows)]
-        self._apply_mask(self.alive)
-
-    def _apply_mask(self, grid):
-        if not self.mask:
-            return
-        for y in range(self.rows):
-            for x in range(self.cols):
-                if not self.mask[y][x]:
-                    grid[y][x] = False
 
     def _wrap(self, x, y):
         if self.cfg.torus:
@@ -311,7 +304,6 @@ class Sim:
                     na[y][x] = True
                     ng[y][x] = self._inherit(genes)
 
-        self._apply_mask(na)
         self.alive, self.gene, self.age = na, ng, nage
 
     def snapshot(self):
@@ -335,9 +327,9 @@ class Sim:
         return [r[:] for r in self.alive], raw
 
 
-def simulate(seed, cfg: Config, mask=None):
+def simulate(seed, cfg: Config):
     """life phase only -> (alive frames, raw metric frames)"""
-    sim = Sim(seed, cfg, mask)
+    sim = Sim(seed, cfg)
     alive_f, raw_f = [], []
     for i in range(cfg.gens + 1):
         if i:
@@ -401,18 +393,32 @@ def build_loop(seed, cfg: Config, mask=None):
     life:  generation 0 (what is left of the graph) onward
     """
     life_seed = thin(seed, cfg.seed_level)
-    frames, bins = colorize(*simulate(life_seed, cfg, mask), life_seed, cfg)
+    frames, bins = colorize(*simulate(life_seed, cfg), life_seed, cfg)
 
     held = cfg.hold + (cfg.fade if cfg.seed_level > 1 else 0)
     intro = [[row[:] for row in seed] for _ in range(held)]
-    return intro + frames, bins
+
+    # A square with no date behind it is painted nothing at all until Life
+    # first reaches it; from that moment it behaves like any other square. So
+    # the edge of today is visible at the start, and stays visible for the
+    # whole loop wherever nothing ever happens. The board itself is untouched -
+    # holding these dead would punch a permanent hole in the torus.
+    frames = intro + frames
+    for y, row in enumerate(mask or []):
+        for x, real in enumerate(row):
+            if real:
+                continue
+            born = next((i for i, f in enumerate(frames) if f[y][x] > 0), len(frames))
+            for i in range(born):
+                frames[i][y][x] = BLANK
+    return frames, bins
 
 
 MAX_GENS = 100
 GRACE = 12          # generations to keep running once the board starts repeating
 
 
-def _trial(board, cfg: Config, torus: bool, mask=None):
+def _trial(board, cfg: Config, torus: bool):
     """-> (generations worth animating, churn over them)
 
     The run ends when the board empties, or GRACE generations after the exact
@@ -425,7 +431,7 @@ def _trial(board, cfg: Config, torus: bool, mask=None):
     """
     total = len(board) * len(board[0])
     live = lambda g: sum(1 for r in g for v in r if v)
-    sim = Sim(board, replace(cfg, torus=torus), mask)
+    sim = Sim(board, replace(cfg, torus=torus))
     prev = sim.snapshot()[0]
     if not live(prev):
         return 0, 0.0
@@ -451,7 +457,7 @@ def _trial(board, cfg: Config, torus: bool, mask=None):
     return good, (changes / (good * total) if good else 0.0)
 
 
-def autotune(seed, cfg: Config, mask=None):
+def autotune(seed, cfg: Config):
     """-> (seed level, generations, torus) that keep the board alive the longest
 
     Every combination is actually simulated. Longest run wins; ties go to the
@@ -464,7 +470,7 @@ def autotune(seed, cfg: Config, mask=None):
     best = None
     for torus in edges:
         for level in levels:
-            good, churn = _trial(thin(seed, level), cfg, torus, mask)
+            good, churn = _trial(thin(seed, level), cfg, torus)
             if good and churn > 0 and (best is None or (good, churn) > best[0]):
                 best = ((good, churn), level, good, torus)
     if best is None:                    # nothing survives; show the graph anyway
@@ -472,11 +478,11 @@ def autotune(seed, cfg: Config, mask=None):
     return best[1], best[2], best[3]
 
 
-def resolve(seed, cfg: Config, mask=None) -> Config:
+def resolve(seed, cfg: Config) -> Config:
     """fill in whichever of gens / seed_level / torus were left on auto"""
     if cfg.gens and cfg.seed_level and cfg.torus is not None:
         return cfg
-    level, gens, torus = autotune(seed, cfg, mask)
+    level, gens, torus = autotune(seed, cfg)
     cfg.seed_level = cfg.seed_level or level
     cfg.gens = cfg.gens or gens
     cfg.torus = torus if cfg.torus is None else cfg.torus
@@ -527,8 +533,6 @@ def render_svg(frames, layout: Layout, cfg: Config, theme: str, ns="k") -> str:
     statics, animated = [], []
     for y in range(rows):
         for x in range(cols):
-            if not layout.real(y, x):        # a day that has not happened
-                continue
             tl = tuple(frames[i][y][x] for i in range(nf))
             if len(set(tl)) == 1:
                 statics.append((x, y, tl[0]))
@@ -542,6 +546,9 @@ def render_svg(frames, layout: Layout, cfg: Config, theme: str, ns="k") -> str:
         f"Arial,sans-serif;font-size:10px;fill:{LABEL_COLOR[theme]}}}",
     ]
     smooth = [(s, e) for s, e in smooth_intervals(cfg) if e < nf]
+    def paint(level):
+        return "none" if level == BLANK else pal[level]
+
     for tl, idx in timelines.items():
         css.append(f".{ns}a{idx}{{animation-name:{ns}f{idx}}}")
         # cells that actually change across a fade window get an extra stop at
@@ -555,7 +562,7 @@ def render_svg(frames, layout: Layout, cfg: Config, theme: str, ns="k") -> str:
                       else ";animation-timing-function:step-end" if i in back
                       else "")
                 pct = f"{i * 100.0 / nf:.3f}".rstrip("0").rstrip(".")
-                stops.append(f"{pct}%{{fill:{pal[lv]}{tf}}}")
+                stops.append(f"{pct}%{{fill:{paint(lv)}{tf}}}")
                 prev = lv
         css.append(f"@keyframes {ns}f{idx}{{{''.join(stops)}}}")
 
@@ -585,10 +592,11 @@ def render_svg(frames, layout: Layout, cfg: Config, theme: str, ns="k") -> str:
                 f'width="{CELL}" height="{CELL}" rx="{RADIUS}" {extra}/>')
 
     for x, y, lv in statics:
-        out.append(rect(x, y, f'fill="{pal[lv]}"'))
+        if lv != BLANK:                    # nothing to paint, so no rect at all
+            out.append(rect(x, y, f'fill="{pal[lv]}"'))
     for x, y, idx in animated:
         out.append(rect(x, y, f'class="{ns}c {ns}a{idx}" '
-                              f'fill="{pal[frames[0][y][x]]}"'))
+                              f'fill="{paint(frames[0][y][x])}"'))
 
     out.append("</svg>")
     return "".join(out)
@@ -662,7 +670,7 @@ def build_frames(payload, cfg: Config):
     """-> (frames, quartile bins, layout, total contributions)"""
     seed, mask, starts, total = load_seed(payload)
     layout = build_layout(seed, mask, starts, cfg.layout)
-    resolve(layout.grid, cfg, layout.mask)
+    resolve(layout.grid, cfg)
     frames, bins = build_loop(layout.grid, cfg, layout.mask)
     return frames, bins, layout, total
 
