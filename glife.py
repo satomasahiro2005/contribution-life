@@ -128,7 +128,7 @@ def build_layout(seed, mask, starts, mode="calendar") -> Layout:
         seen, out = set(), []
         for i, x in enumerate(xs):
             d = starts[x]
-            if d.month not in seen and d.day <= 7 and i < len(xs) - 2:
+            if d.month not in seen and d.day <= 7 and i < len(xs) - 1:
                 seen.add(d.month)
                 out.append((i, row, MONTHS[d.month - 1], side))
         return out
